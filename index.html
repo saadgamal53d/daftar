@@ -135,6 +135,10 @@ main.slide{animation:slidein .22s ease-out}
 .vrow{padding:12px 0;border-bottom:1px solid var(--line)}.vrow:last-child{border:0}
 .vh{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
 .vl{display:flex;align-items:center;gap:8px;padding:4px 0;flex-wrap:wrap}.vl small{color:var(--mute);width:96px;flex:none}.vl .vv{flex:1;min-width:0;word-break:break-all;font-variant-numeric:tabular-nums;direction:ltr;text-align:right}
+.kp{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin:10px 0 4px;direction:ltr}
+.kp button{margin:0!important;padding:16px 0!important;font-size:24px;font-weight:800;border-radius:16px;background:#f1f5f4;border:0;color:var(--ink);cursor:pointer;font-family:inherit;-webkit-user-select:none;user-select:none}
+.kp button:active{background:#dfe9e6}.kp .bk{background:#fdeceb;color:var(--red)}.kp .okk{background:var(--green);color:#fff}
+#ovI{text-align:center;font-size:30px;letter-spacing:10px;min-height:54px;direction:ltr}
 @media(max-width:520px){.stat b{font-size:17px}header{padding-bottom:58px}}
 </style>
 </head>
@@ -812,11 +816,23 @@ const getPin=()=>JSON.parse(ls.get(PKEY)||'null');
 async function hashPin(pin,salt){const d=salt+':'+pin;
   if(crypto&&crypto.subtle){const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(d));return [...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('')}
   let x=5381;for(const c of d)x=((x<<5)+x+c.charCodeAt(0))>>>0;return 'f'+x}
+let ov_key=null;document.addEventListener('keydown',e=>{if(ov_key)ov_key(e)});
 function ask(title,{input=true,buttons=[],cancel=false,err=''}={}){return new Promise(res=>{
-  $('#ovT').textContent=title;$('#ovE').textContent=err;const i=$('#ovI');i.value='';i.hidden=!input;$('#ov').hidden=false;
+  $('#ovT').textContent=title;$('#ovE').textContent=err;const i=$('#ovI');i.value='';i.hidden=!input;if(!input)ov_key=null;$('#ov').hidden=false;
   const B=$('#ovB');B.innerHTML='';
   const done=v=>{$('#ov').hidden=true;res(v)};
-  if(input){const ok=document.createElement('button');ok.className='primary';ok.textContent='تأكيد';ok.onclick=()=>i.value?done(i.value):0;B.append(ok);i.onkeydown=e=>{if(e.key==='Enter')ok.click()};setTimeout(()=>i.focus(),50)}
+  if(input){
+    i.readOnly=true;i.setAttribute('inputmode','none');
+    const submit=()=>{if(i.value)done(i.value)};
+    const K=document.createElement('div');K.className='kp';
+    const add=(t,cls,fn)=>{const b=document.createElement('button');b.type='button';b.textContent=t;if(cls)b.className=cls;b.onclick=fn;K.append(b);return b};
+    ['1','2','3','4','5','6','7','8','9'].forEach(d=>add(d,'',()=>{if(i.value.length<12)i.value+=d}));
+    add('⌫','bk',()=>{i.value=i.value.slice(0,-1)});
+    add('0','',()=>{if(i.value.length<12)i.value+='0'});
+    add('✓','okk',submit);
+    B.append(K);
+    ov_key=e=>{if(!$('#ov').hidden&&i.hidden===false){if(/^[0-9]$/.test(e.key)){if(i.value.length<12)i.value+=e.key}else if(e.key==='Backspace')i.value=i.value.slice(0,-1);else if(e.key==='Enter')submit()}};
+  }
   buttons.forEach(([l,v])=>{const b=document.createElement('button');b.textContent=l;b.onclick=()=>done(v);B.append(b)});
   if(cancel){const c=document.createElement('button');c.textContent='إلغاء';c.onclick=()=>done(null);B.append(c)}})}
 async function verify(title,cancel){let err='';for(;;){const v=await ask(title,{cancel,err});if(v===null)return false;
