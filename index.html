@@ -241,6 +241,10 @@ save();
 const VAULT0=["الإقامة","رقم تلفون النت","رقم التلفون الشخصي","بنك إنماء","بنك الأهلي","بنك الراجحي","بنك الرياض","بنك الجزيرة"];
 if(!db.vault)db.vault={items:VAULT0.map((n,i)=>({id:8950000+i,name:n,user:'',secret:'',note:''}))};
 save();
+if(!db.v13){const add=[{id:8000001,date:'2026-09-07',amount:200,desc:'سلف للنصة',tr:0,n:0},{id:8100200,date:'2026-06-09',amount:300,desc:'سلف',tr:0,n:0}];add.forEach(a=>{if(!db.work.days.some(x=>x.id===a.id))db.work.days.push(a)});db.v13=1}
+save();
+if(db.work&&db.work.adj===undefined)db.work.adj=100;
+save();
 {const fx={'2026-01-07':'2026-07-01','2026-12-06':'2026-06-12'};db.tx.forEach(t=>{if(t.id<9000000&&fx[t.date])t.date=fx[t.date]});save()}
 {const base=[...db.tx];ADD.forEach(a=>{if(!db.applied.includes(a.id)){db.applied.push(a.id);if(!base.some(t=>t.date===a.date&&t.amount===a.amount&&t.kind===a.kind))db.tx.push(a)}});save()}
 const $=s=>document.querySelector(s);
@@ -546,7 +550,7 @@ const ar=n=>fmt(n);
 function renderWork(){
   const W=db.work,days=[...W.days].sort((a,b)=>a.date.localeCompare(b.date)||a.id-b.id),pays=[...W.pays].sort((a,b)=>a.date.localeCompare(b.date));
   const sum=(l,k='amount')=>l.reduce((a,x)=>a+(+x[k]||0),0);
-  const total=sum(days),paid=sum(pays),rest=total-paid,cm=today().slice(0,7),mt=sum(days.filter(d=>d.date.startsWith(cm))),trs=sum(days,'tr');
+  const adj=+W.adj||0;const total=sum(days),paid=sum(pays),rest=total-paid+adj,cm=today().slice(0,7),mt=sum(days.filter(d=>d.date.startsWith(cm))),trs=sum(days,'tr');
   let n=0;const num=new Map();days.forEach(d=>{if(d.n)num.set(d.id,++n)});
   const e=wEdit?W.days.find(x=>x.id===wEdit):null;
   const kind=e?'day':wKind;
@@ -555,12 +559,13 @@ function renderWork(){
    <div class="nr"><b class="pos">${ar(paid)}</b><span>دي الفلوس اللي قبضتها من أيام الشغل اللي فوق</span></div>
    <div class="nr"><b>${ar(mt)}</b><span>دا إجمالي شغل الشهر ده (${mname(cm)})</span></div>
    <div class="nr"><b>${ar(total)}</b><span>دا إجمالي كل أيام الشغل</span></div>
+   ${adj?`<div class="nr"><b>${ar(adj)}</b><span>تسوية: الشهور القديمة (قبل أغسطس) مسددة بالكامل</span></div>`:''}
    <div class="nr"><b class="neg">${ar(rest)}</b><span>دا الباقي من إجمالي فلوس الشغل</span></div>
    <div class="nr"><b class="neg">${ar(trs)}</b><span>دي فلوس المواصلات اللي صرفتها في كل يوم رحت فيه الشغل</span></div>
   `;
   const SEG=`<div class="card" style="padding:10px"><div class="seg" style="margin:0"><button type="button" data-wk="day" class="exp ${kind==='day'?'on':''}">يوم شغل</button><button type="button" data-wk="pay" class="inc ${kind==='pay'?'on':''}">قبض</button></div></div>`;
   $('#work').innerHTML=kind==='pay'?SEG+`<div class="card notes">${NOTES}</div>`:SEG+`
-  <div class="cards w5"><div class="stat"><small>إجمالي كل أيام الشغل</small><b>${ar(total)}</b></div><div class="stat"><small>اللي قبضته</small><b class="pos">${ar(paid)}</b></div><div class="stat"><small>الباقي من فلوس الشغل</small><b class="neg">${ar(rest)}</b></div><div class="stat"><small>مواصلات الشغل</small><b class="neg">${ar(trs)}</b></div></div>
+  <div class="cards w5"><div class="stat"><small>إجمالي كل أيام الشغل</small><b>${ar(total)}</b></div><div class="stat"><small>اللي قبضته</small><b class="pos">${ar(paid)}</b></div><div class="stat"><small>الباقي من فلوس الشغل</small><b class="neg">${ar(rest)}</b></div><div class="stat"><small>مواصلات الشغل</small><b class="neg">${ar(trs)}</b></div></div>${adj?`<div style="color:var(--mute);font-size:13px;margin:-6px 4px 12px">الباقي = الإجمالي − اللي قبضته + تسوية ${ar(adj)} (الشهور القديمة مسددة)</div>`:''}
   <div class="card"><h2>${e?'✏️ تعديل':'💼 تسجيل'}</h2>
    <form id="fW">
     <label>التاريخ<input name="date" type="date" required value="${e?e.date:today()}"></label>
