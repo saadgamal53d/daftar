@@ -105,6 +105,7 @@ main,.bankp,.card{max-width:100%}
 .mk.ok{color:var(--green)}.mk.no{color:var(--red)}.mk.ok.on{background:var(--green);color:#fff;border-color:var(--green)}.mk.no.on{background:var(--red);color:#fff;border-color:var(--red)}
 .acedit{display:flex;gap:6px;flex:1;min-width:0}.acedit input{flex:1;min-width:0;padding:6px 8px}.acedit button{padding:6px 10px;font-size:13px}
 .bt .acts{margin-inline-start:6px}.bt a{text-decoration:none;color:var(--ink)}
+tr.mine td{background:#e7f6ef;font-weight:700}
 @media(max-width:520px){.stat b{font-size:17px}header{padding-bottom:58px}}
 </style>
 </head>
@@ -420,10 +421,13 @@ function renderLed(){
   const sumD=a=>db.je.reduce((s,j)=>s+(j.dr===a?j.amount:0),0),sumC=a=>db.je.reduce((s,j)=>s+(j.cr===a?j.amount:0),0);
   const summary=accs.map(a=>{const b=bal(a);return `<tr><td><a href="#" data-a="${esc(a)}">${esc(accName(a))}</a></td><td class="n">${fmt(sumD(a))}</td><td class="n">${fmt(sumC(a))}</td><td class="n ${b>0?'pos':b<0?'neg':''}">${fmt(Math.abs(b))}</td><td>${b>0?'مدين':b<0?'دائن':'—'}</td></tr>`}).join('');
   const allD=db.je.reduce((s,j)=>s+j.amount,0);
-  const rows=db.je.filter(j=>j.dr===ledAcc||j.cr===ledAcc).sort((a,b)=>a.date.localeCompare(b.date)||a.no-b.no);
+  const me=accNorm(ledAcc);
+  const rows=db.je.filter(j=>accNorm(j.dr)===me||accNorm(j.cr)===me).sort((a,b)=>a.date.localeCompare(b.date)||a.no-b.no);
   let run=0;
-  const body=rows.map(j=>{const d=j.dr===ledAcc;run+=d?j.amount:-j.amount;
-    return `<tr><td class="n">${j.date}</td><td>${j.no}</td><td>${d?'إلى حـ/ '+esc(j.cr):'من حـ/ '+esc(j.dr)}</td><td class="n">${d?fmt(j.amount):''}</td><td class="n">${d?'':fmt(j.amount)}</td><td class="n">${fmt(Math.abs(run))} ${run>0?'م':run<0?'د':''}</td></tr>`}).join('');
+  const body=rows.map(j=>{const d=accNorm(j.dr)===me;run+=d?j.amount:-j.amount;
+    const bl=`<td class="n">${fmt(Math.abs(run))} ${run>0?'م':run<0?'د':''}</td>`;
+    return `<tr class="${d?'mine':''}"><td class="n" rowspan="2">${j.date}</td><td rowspan="2">${j.no}</td><td>من حـ/ ${esc(j.dr)}${j.note?`<br><small style="color:var(--mute)">${esc(j.note)}</small>`:''}</td><td class="n">${fmt(j.amount)}</td><td></td>${d?bl:'<td></td>'}</tr>
+    <tr class="${d?'':'mine'}"><td class="sub">إلى حـ/ ${esc(j.cr)}</td><td></td><td class="n">${fmt(j.amount)}</td>${d?'<td></td>':bl}</tr>`}).join('');
   $('#led').innerHTML=`
   ${accsAll.length?ledPlain(accsAll,bal,sumD,sumC)+`<details class="card"><summary style="cursor:pointer;font-weight:800">📋 الجدول المحاسبي (مدين / دائن)</summary><div class="scroll" style="margin-top:10px"><table><tr><th>الحساب</th><th>مدين</th><th>دائن</th><th>الرصيد</th><th></th></tr>${summary}<tr><th>الإجمالي</th><th class="n">${fmt(allD)}</th><th class="n">${fmt(allD)}</th><th></th><th></th></tr></table></div></details>`:'<div class="card empty">سجّل قيود الأول</div>'}
   ${accs.length?`<div class="card"><h2>كشف حساب</h2>
