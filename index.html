@@ -11,6 +11,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="دفتر حساباتي">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
 <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <title>دفتر حساباتي</title>
@@ -125,6 +126,7 @@ header .tools button{white-space:nowrap;flex:none}
 .cards{gap:8px}.stat{padding:12px 8px}.stat b{font-size:17px}.card{padding:14px;border-radius:18px}main{padding:0 10px}
 .item{gap:10px}.ic2{width:40px;height:40px}.amt{font-size:15px}.acts .x{padding:2px 5px}.mk{width:38px;height:38px}}
 .svst{font-size:12px;padding:6px 12px;border-radius:20px;background:#ffffff26;color:#fff;white-space:nowrap;flex:none;align-self:center}
+.svst.off{background:#f5b21c;color:#4a3300;font-weight:700}
 .svst.ok{background:#ffffff33}.svst.wait{background:#f5b21c;color:#4a3300}.svst.bad{background:#e0503f;color:#fff;font-weight:800}
 header .tools .ur{font-size:18px;line-height:1;padding:5px 12px;font-weight:800}
 header .tools .ur:disabled{opacity:.35;cursor:default}
@@ -152,6 +154,7 @@ main.slide{animation:slidein .22s ease-out}
     <button id="undoB" class="ur" title="رجوع" disabled>↶</button>
     <button id="redoB" class="ur" title="إعادة" disabled>↷</button>
     <span id="svst" class="svst">✓ اتحفظ</span>
+    <span id="offl" class="svst off" hidden>📴 شغال بدون نت</span>
     <button id="exJson" hidden></button><button id="exCsv" hidden></button><button id="imp" hidden></button>
   </div>
 </header>
@@ -772,6 +775,9 @@ $('#bkOk').onclick=async()=>{const a=$('#bkA');
 
 render();
 histOn=true;hist=[JSON.stringify(db)];hp=0;updUR();
+const offUp=()=>{const o=document.getElementById('offl');if(o)o.hidden=navigator.onLine!==false};
+addEventListener('online',()=>{offUp()});addEventListener('offline',()=>{const o=document.getElementById('offl');if(o)o.hidden=false});offUp();
+if('serviceWorker' in navigator&&location.protocol==='https:')addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));
 $('#undoB').onclick=()=>histGo(hp-1);
 $('#redoB').onclick=()=>histGo(hp+1);
 $('#exXls').onclick=()=>{
