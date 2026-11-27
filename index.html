@@ -254,6 +254,8 @@ if(!db.v13){const add=[{id:8000001,date:'2026-09-07',amount:200,desc:'سلف ل�
 save();
 if(db.work&&db.work.adj===undefined)db.work.adj=100;
 save();
+function fixAbuya(d){if(!d||d.v16)return;(d.tx||[]).filter(t=>t.desc==='ابويا'&&t.date==='2026-11-24'&&t.kind==='inc'&&t.amount===50).forEach(t=>{t.amount=80;(d.je||[]).filter(j=>j.txId===t.id).forEach(j=>j.amount=80)});d.v16=1}
+fixAbuya(db);save();
 if(!db.v15){const t=db.tx.find(x=>x.id===9000034&&x.desc==='ابويا'&&x.amount===50);if(t){t.amount=80;db.je.filter(j=>j.txId===t.id).forEach(j=>j.amount=80)}db.v15=1}
 save();
 if(!db.v14){[{id:9100901,kind:'exp',amount:194.5,desc:'قسط تمارة ٤',cat:'',date:'2026-11-27',space:'exp'},{id:9100902,kind:'inc',amount:250,desc:'قبض',cat:'قبض',date:'2026-11-27',space:'exp',_wk:1}].forEach(a=>{const w=a._wk;delete a._wk;const ex=db.tx.find(t=>t.id===a.id||(t.date===a.date&&t.amount===a.amount&&t.kind===a.kind));if(ex){if(w&&!ex.wpId){syncWorkPay(ex,true);syncJe(ex)}return}db.tx.push(a);syncWorkPay(a,!!w);syncJe(a)});db.v14=1}
@@ -881,7 +883,7 @@ function mergeIn(base,loc){const add=(a,b,same)=>{(b||[]).forEach(x=>{if(!(a||[]
   const sx=(x,y)=>x.date===y.date&&x.amount===y.amount&&x.kind===y.kind&&x.desc===y.desc;
   add(base.tx,loc.tx,sx);add(base.je,loc.je);if(base.work&&loc.work){add(base.work.days,loc.work.days,(x,y)=>x.date===y.date&&x.amount===y.amount&&x.desc===y.desc);add(base.work.pays,loc.work.pays,(x,y)=>x.date===y.date&&x.amount===y.amount)}
   if(base.egypt&&loc.egypt)add(base.egypt.items,loc.egypt.items);return base}
-function adopt(r){applying=true;db=r;try{localStorage.setItem(KEY,JSON.stringify(db))}catch{}applying=false;try{render()}catch{}}
+function adopt(r){fixAbuya(r);applying=true;db=r;try{localStorage.setItem(KEY,JSON.stringify(db))}catch{}applying=false;try{render()}catch{}}
 const gErr=e=>e==='PIN_BAD'?'الرقم السري مختلف عن اللي في السحابة':e==='PIN_LOCKED'?'اتقفل شوية بسبب محاولات غلط':e==='PIN_SHORT'?'الرقم أقل من 4 أرقام':'مشكلة في السحابة';
 async function cloudGetData(pin){let r=await gcall('get',pin);if(r.error==='PIN_NEW')r=await gcall('init',pin);return r}
 async function syncNow(){if(!SYNCPIN||syncBusy||!navigator.onLine)return;syncBusy=true;cdMark('☁️ بيزامن...','wait');
