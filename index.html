@@ -156,6 +156,7 @@ main.slide{animation:slidein .22s ease-out}
     <button id="redoB" class="ur" title="إعادة" disabled>↷</button>
     <span id="svst" class="svst">✓ اتحفظ</span>
     <span id="offl" class="svst off" hidden>📴 شغال بدون نت</span>
+    <button id="cloudBtn">☁️ مزامنة</button><span id="cld" class="svst" hidden></span>
     <button id="exJson" hidden></button><button id="exCsv" hidden></button><button id="imp" hidden></button>
   </div>
 </header>
@@ -188,10 +189,10 @@ const KEY='daftar-hisabati-v1';
 const mem={};
 const ls={get:k=>{try{return localStorage.getItem(k)}catch{return mem[k]??null}},set:(k,v)=>{try{localStorage.setItem(k,v)}catch{mem[k]=v}},del:k=>{try{localStorage.removeItem(k)}catch{delete mem[k]}}};
 let db;try{db=JSON.parse(ls.get(KEY)||'null')}catch{db=null}db=db||SEED;if(!(db.tx||[]).length&&!(db.je||[]).length)db=SEED;
-let hist=[],hp=-1,histOn=false,svTimer=null;
-const save=()=>{const s=JSON.stringify(db);let ok=true;try{localStorage.setItem(KEY,s)}catch{ok=false;mem[KEY]=s}
+let hist=[],hp=-1,histOn=false,svTimer=null;var applying=false,SYNCPIN=null,syncSoon=()=>{};
+const save=()=>{if(!applying)db.mt=Date.now();const s=JSON.stringify(db);let ok=true;try{localStorage.setItem(KEY,s)}catch{ok=false;mem[KEY]=s}
   if(histOn&&hist[hp]!==s){hist=hist.slice(0,hp+1);hist.push(s);if(hist.length>60)hist.shift();hp=hist.length-1}
-  svMark(ok);updUR()};
+  svMark(ok);updUR();if(SYNCPIN&&!applying)syncSoon()};
 function svMark(ok){const e=document.getElementById('svst');if(!e)return;clearTimeout(svTimer);
   if(!ok){e.textContent='⚠ ما اتحفظش';e.className='svst bad';return}
   e.textContent='⏳ بيتحفظ...';e.className='svst wait';
@@ -852,13 +853,13 @@ function ask(title,{input=true,buttons=[],cancel=false,err=''}={}){return new Pr
   buttons.forEach(([l,v])=>{const b=document.createElement('button');b.textContent=l;b.onclick=()=>done(v);B.append(b)});
   if(cancel){const c=document.createElement('button');c.textContent='إلغاء';c.onclick=()=>done(null);B.append(c)}})}
 async function verify(title,cancel){let err='';for(;;){const v=await ask(title,{cancel,err});if(v===null)return false;
-  const p=getPin();if(await hashPin(v,p.salt)===p.hash)return true;err='الرقم غلط، حاول تاني'}}
+  const p=getPin();if(await hashPin(v,p.salt)===p.hash){SYNCPIN=v;syncSoon(800);return true}err='الرقم غلط، حاول تاني'}}
 async function setPin(){let err='';for(;;){
   const a=await ask('اختار رقم سري (4 أرقام على الأقل)',{cancel:true,err});if(a===null)return;
   if(a.length<4){err='لازم 4 أرقام أو أكتر';continue}
   const b=await ask('اكتب الرقم تاني للتأكيد',{cancel:true});if(b===null)return;
   if(a!==b){err='الرقمين مش متطابقين';continue}
-  const salt=Math.random().toString(36).slice(2);ls.set(PKEY,JSON.stringify({salt,hash:await hashPin(a,salt)}));syncLock();return}}
+  const salt=Math.random().toString(36).slice(2);ls.set(PKEY,JSON.stringify({salt,hash:await hashPin(a,salt)}));syncLock();SYNCPIN=a;syncSoon(800);return}}
 function syncLock(){$('#lockNow').hidden=!getPin()}
 async function lock(){if(!getPin())return;vOpen=false;vShow={};document.body.classList.add('locked');await verify('🔒 دفتر حساباتي — اكتب الرقم السري',false);document.body.classList.remove('locked')}
 $('#lockNow').onclick=lock;
@@ -868,6 +869,45 @@ $('#pinBtn').onclick=async()=>{
   const c=await ask('الرقم السري',{input:false,cancel:true,buttons:[['تغيير الرقم','chg'],['إلغاء القفل','rm']]});
   if(c==='chg')await setPin();else if(c==='rm'){ls.del(PKEY);syncLock()}};
 let hiddenAt=0;document.addEventListener('visibilitychange',()=>{if(document.hidden)hiddenAt=Date.now();else if(getPin()&&hiddenAt&&Date.now()-hiddenAt>60000&&$('#ov').hidden)lock()});
+
+/* ---------- Cloud sync (encrypted, offline-first) ---------- */
+const FB={p:'daftar-hisabati-sync',k:'AIzaSyCnEGAhj1H5TKSfXP9nUmLrgKLK8s90-oA'};
+let syncT=null,syncBusy=false;
+const b64=u=>{let s='';u.forEach(c=>s+=String.fromCharCode(c));return btoa(s)},unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function kdf(pin,salt,bits){const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(pin),'PBKDF2',false,['deriveBits']);return new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',salt:new TextEncoder().encode(salt),iterations:150000,hash:'SHA-256'},k,bits))}
+const cloudId=async pin=>[...await kdf(pin,'daftar-id-v1',256)].map(x=>x.toString(16).padStart(2,'0')).join('');
+async function cloudKey(pin){return crypto.subtle.importKey('raw',await kdf(pin,'daftar-key-v1',256),'AES-GCM',false,['encrypt','decrypt'])}
+async function enc(pin,obj){const iv=crypto.getRandomValues(new Uint8Array(12));const c=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},await cloudKey(pin),new TextEncoder().encode(JSON.stringify(obj))));return b64(iv)+'.'+b64(c)}
+async function dec(pin,s){const [i,c]=s.split('.');return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(i)},await cloudKey(pin),unb64(c))))}
+const fsUrl=id=>`https://firestore.googleapis.com/v1/projects/${FB.p}/databases/(default)/documents/vaults/${id}`;
+async function cloudGet(pin){const r=await fetch(fsUrl(await cloudId(pin))+'?key='+FB.k);if(r.status===404)return null;if(!r.ok)throw new Error('get '+r.status);const j=await r.json();return await dec(pin,j.fields.d.stringValue)}
+async function cloudPut(pin,obj){const r=await fetch(fsUrl(await cloudId(pin))+'?key='+FB.k+'&updateMask.fieldPaths=d&updateMask.fieldPaths=t',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:{d:{stringValue:await enc(pin,obj)},t:{stringValue:String(obj.mt||0)}}})});if(!r.ok)throw new Error('put '+r.status)}
+function cdMark(t,cls){const e=$('#cld');if(!e)return;e.hidden=false;e.textContent=t;e.className='svst '+(cls||'ok')}
+function mergeIn(base,loc){const add=(a,b,same)=>{(b||[]).forEach(x=>{if(!(a||[]).some(y=>y.id===x.id||(same&&same(x,y))))a.push(x)})};
+  const sx=(x,y)=>x.date===y.date&&x.amount===y.amount&&x.kind===y.kind&&x.desc===y.desc;
+  add(base.tx,loc.tx,sx);add(base.je,loc.je);if(base.work&&loc.work){add(base.work.days,loc.work.days,(x,y)=>x.date===y.date&&x.amount===y.amount&&x.desc===y.desc);add(base.work.pays,loc.work.pays,(x,y)=>x.date===y.date&&x.amount===y.amount)}
+  if(base.egypt&&loc.egypt)add(base.egypt.items,loc.egypt.items);return base}
+function adopt(r){applying=true;db=r;try{localStorage.setItem(KEY,JSON.stringify(db))}catch{}applying=false;try{render()}catch{}}
+async function syncNow(){if(!SYNCPIN||syncBusy||!navigator.onLine||!(crypto&&crypto.subtle))return;syncBusy=true;cdMark('☁️ بيزامن...','wait');
+  try{const r=await cloudGet(SYNCPIN);
+    if(!r){db.cloudAt=Date.now();await cloudPut(SYNCPIN,db)}
+    else if(!db.cloudAt){const m=mergeIn(r,db);m.cloudAt=Date.now();m.mt=Date.now();adopt(m);await cloudPut(SYNCPIN,db)}
+    else if((r.mt||0)>(db.mt||0)){r.cloudAt=Date.now();adopt(r)}
+    else if((db.mt||0)>(r.mt||0)){db.cloudAt=Date.now();await cloudPut(SYNCPIN,db)}
+    cdMark('☁️ متزامن '+new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}),'ok')}
+  catch(e){cdMark('☁️ مش متزامن','off')}
+  syncBusy=false}
+syncSoon=(ms=3000)=>{clearTimeout(syncT);syncT=setTimeout(syncNow,ms)};
+addEventListener('online',()=>syncSoon(500));
+$('#cloudBtn').onclick=async()=>{
+  if(!navigator.onLine){await ask('محتاج نت للمزامنة، البرنامج شغال عادي من غيره',{input:false,buttons:[['تمام','x']]});return}
+  if(getPin()){if(!SYNCPIN&&!await verify('اكتب الرقم السري',true))return;await syncNow();return}
+  const c=await ask('☁️ المزامنة',{input:false,cancel:true,buttons:[['جهاز جديد: هات بياناتي','pull'],['ابدأ المزامنة من الجهاز ده','push']]});
+  if(c==='push'){await setPin();if(getPin()&&SYNCPIN)await syncNow();return}
+  if(c==='pull'){let err='';for(;;){const v=await ask('اكتب الرقم السري بتاعك',{cancel:true,err});if(v===null)return;
+    try{const r=await cloudGet(v);if(!r){err='مفيش بيانات بالرقم ده';continue}
+      const salt=Math.random().toString(36).slice(2);ls.set(PKEY,JSON.stringify({salt,hash:await hashPin(v,salt)}));syncLock();SYNCPIN=v;r.cloudAt=Date.now();adopt(r);cdMark('☁️ اتحمّلت البيانات','ok');return}
+    catch(e){err='حصل خطأ في الاتصال أو الرقم غلط'}}}};
 syncLock();if(getPin())lock();
 </script>
 </body>
