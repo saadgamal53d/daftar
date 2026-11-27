@@ -254,6 +254,8 @@ if(!db.v13){const add=[{id:8000001,date:'2026-09-07',amount:200,desc:'سلف ل�
 save();
 if(db.work&&db.work.adj===undefined)db.work.adj=100;
 save();
+if(!db.v15){const t=db.tx.find(x=>x.id===9000034&&x.desc==='ابويا'&&x.amount===50);if(t){t.amount=80;db.je.filter(j=>j.txId===t.id).forEach(j=>j.amount=80)}db.v15=1}
+save();
 if(!db.v14){[{id:9100901,kind:'exp',amount:194.5,desc:'قسط تمارة ٤',cat:'',date:'2026-11-27',space:'exp'},{id:9100902,kind:'inc',amount:250,desc:'قبض',cat:'قبض',date:'2026-11-27',space:'exp',_wk:1}].forEach(a=>{const w=a._wk;delete a._wk;const ex=db.tx.find(t=>t.id===a.id||(t.date===a.date&&t.amount===a.amount&&t.kind===a.kind));if(ex){if(w&&!ex.wpId){syncWorkPay(ex,true);syncJe(ex)}return}db.tx.push(a);syncWorkPay(a,!!w);syncJe(a)});db.v14=1}
 save();
 {const fx={'2026-01-07':'2026-07-01','2026-12-06':'2026-06-12'};db.tx.forEach(t=>{if(t.id<9000000&&fx[t.date])t.date=fx[t.date]});save()}
@@ -859,7 +861,7 @@ async function setPin(){let err='';for(;;){
   if(a.length<4){err='لازم 4 أرقام أو أكتر';continue}
   const b=await ask('اكتب الرقم تاني للتأكيد',{cancel:true});if(b===null)return;
   if(a!==b){err='الرقمين مش متطابقين';continue}
-  const salt=Math.random().toString(36).slice(2);ls.set(PKEY,JSON.stringify({salt,hash:await hashPin(a,salt)}));syncLock();SYNCPIN=a;syncSoon(800);return}}
+  const salt=Math.random().toString(36).slice(2);ls.set(PKEY,JSON.stringify({salt,hash:await hashPin(a,salt)}));syncLock();await pinChanged(a);return}}
 function syncLock(){$('#lockNow').hidden=!getPin()}
 async function lock(){if(!getPin())return;vOpen=false;vShow={};document.body.classList.add('locked');await verify('🔒 دفتر حساباتي — اكتب الرقم السري',false);document.body.classList.remove('locked')}
 $('#lockNow').onclick=lock;
@@ -870,34 +872,30 @@ $('#pinBtn').onclick=async()=>{
   if(c==='chg')await setPin();else if(c==='rm'){ls.del(PKEY);syncLock()}};
 let hiddenAt=0;document.addEventListener('visibilitychange',()=>{if(document.hidden)hiddenAt=Date.now();else if(getPin()&&hiddenAt&&Date.now()-hiddenAt>60000&&$('#ov').hidden)lock()});
 
-/* ---------- Cloud sync (encrypted, offline-first) ---------- */
-const FB={p:'daftar-hisabati-sync',k:'AIzaSyCnEGAhj1H5TKSfXP9nUmLrgKLK8s90-oA'};
+/* ---------- Cloud sync (Google Apps Script + Drive, offline-first) ---------- */
+const API='https://script.google.com/macros/s/AKfycbxpt39e6gYREvmwPZtOc986Ww_OAqwgvyj0w8pjY-7-bKdoZV8ffr965aULo6HkzKp9/exec';
 let syncT=null,syncBusy=false;
-const b64=u=>{let s='';u.forEach(c=>s+=String.fromCharCode(c));return btoa(s)},unb64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
-async function kdf(pin,salt,bits){const k=await crypto.subtle.importKey('raw',new TextEncoder().encode(pin),'PBKDF2',false,['deriveBits']);return new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',salt:new TextEncoder().encode(salt),iterations:150000,hash:'SHA-256'},k,bits))}
-const cloudId=async pin=>[...await kdf(pin,'daftar-id-v1',256)].map(x=>x.toString(16).padStart(2,'0')).join('');
-async function cloudKey(pin){return crypto.subtle.importKey('raw',await kdf(pin,'daftar-key-v1',256),'AES-GCM',false,['encrypt','decrypt'])}
-async function enc(pin,obj){const iv=crypto.getRandomValues(new Uint8Array(12));const c=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},await cloudKey(pin),new TextEncoder().encode(JSON.stringify(obj))));return b64(iv)+'.'+b64(c)}
-async function dec(pin,s){const [i,c]=s.split('.');return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(i)},await cloudKey(pin),unb64(c))))}
-const fsUrl=id=>`https://firestore.googleapis.com/v1/projects/${FB.p}/databases/(default)/documents/vaults/${id}`;
-async function cloudGet(pin){const r=await fetch(fsUrl(await cloudId(pin))+'?key='+FB.k);if(r.status===404)return null;if(!r.ok)throw new Error('get '+r.status);const j=await r.json();return await dec(pin,j.fields.d.stringValue)}
-async function cloudPut(pin,obj){const r=await fetch(fsUrl(await cloudId(pin))+'?key='+FB.k+'&updateMask.fieldPaths=d&updateMask.fieldPaths=t',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({fields:{d:{stringValue:await enc(pin,obj)},t:{stringValue:String(obj.mt||0)}}})});if(!r.ok)throw new Error('put '+r.status)}
+async function gcall(op,pin,data){const r=await fetch(API,{method:'POST',body:JSON.stringify({op,pin,data})});return await r.json()}
 function cdMark(t,cls){const e=$('#cld');if(!e)return;e.hidden=false;e.textContent=t;e.className='svst '+(cls||'ok')}
 function mergeIn(base,loc){const add=(a,b,same)=>{(b||[]).forEach(x=>{if(!(a||[]).some(y=>y.id===x.id||(same&&same(x,y))))a.push(x)})};
   const sx=(x,y)=>x.date===y.date&&x.amount===y.amount&&x.kind===y.kind&&x.desc===y.desc;
   add(base.tx,loc.tx,sx);add(base.je,loc.je);if(base.work&&loc.work){add(base.work.days,loc.work.days,(x,y)=>x.date===y.date&&x.amount===y.amount&&x.desc===y.desc);add(base.work.pays,loc.work.pays,(x,y)=>x.date===y.date&&x.amount===y.amount)}
   if(base.egypt&&loc.egypt)add(base.egypt.items,loc.egypt.items);return base}
 function adopt(r){applying=true;db=r;try{localStorage.setItem(KEY,JSON.stringify(db))}catch{}applying=false;try{render()}catch{}}
-async function syncNow(){if(!SYNCPIN||syncBusy||!navigator.onLine||!(crypto&&crypto.subtle))return;syncBusy=true;cdMark('☁️ بيزامن...','wait');
-  try{const r=await cloudGet(SYNCPIN);
-    if(!r){db.cloudAt=Date.now();await cloudPut(SYNCPIN,db)}
-    else if(!db.cloudAt){const m=mergeIn(r,db);m.cloudAt=Date.now();m.mt=Date.now();adopt(m);await cloudPut(SYNCPIN,db)}
+const gErr=e=>e==='PIN_BAD'?'الرقم السري مختلف عن اللي في السحابة':e==='PIN_LOCKED'?'اتقفل شوية بسبب محاولات غلط':e==='PIN_SHORT'?'الرقم أقل من 4 أرقام':'مشكلة في السحابة';
+async function cloudGetData(pin){let r=await gcall('get',pin);if(r.error==='PIN_NEW')r=await gcall('init',pin);return r}
+async function syncNow(){if(!SYNCPIN||syncBusy||!navigator.onLine)return;syncBusy=true;cdMark('☁️ بيزامن...','wait');
+  try{const g=await cloudGetData(SYNCPIN);if(g.error){cdMark('☁️ '+gErr(g.error),'bad');syncBusy=false;return}
+    const r=g.data?JSON.parse(g.data):null;
+    if(!r){db.cloudAt=Date.now();await gcall('put',SYNCPIN,JSON.stringify(db))}
+    else if(!db.cloudAt){const m=mergeIn(r,db);m.cloudAt=Date.now();m.mt=Date.now();adopt(m);await gcall('put',SYNCPIN,JSON.stringify(db))}
     else if((r.mt||0)>(db.mt||0)){r.cloudAt=Date.now();adopt(r)}
-    else if((db.mt||0)>(r.mt||0)){db.cloudAt=Date.now();await cloudPut(SYNCPIN,db)}
+    else if((db.mt||0)>(r.mt||0)){db.cloudAt=Date.now();await gcall('put',SYNCPIN,JSON.stringify(db))}
     cdMark('☁️ متزامن '+new Date().toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}),'ok')}
   catch(e){cdMark('☁️ مش متزامن','off')}
   syncBusy=false}
 syncSoon=(ms=3000)=>{clearTimeout(syncT);syncT=setTimeout(syncNow,ms)};
+async function pinChanged(np){const old=SYNCPIN;if(old&&old!==np&&navigator.onLine){try{await fetch(API,{method:'POST',body:JSON.stringify({op:'chpin',pin:old,np})});}catch(e){}}SYNCPIN=np;syncSoon(800)}
 addEventListener('online',()=>syncSoon(500));
 $('#cloudBtn').onclick=async()=>{
   if(!navigator.onLine){await ask('محتاج نت للمزامنة، البرنامج شغال عادي من غيره',{input:false,buttons:[['تمام','x']]});return}
@@ -905,9 +903,10 @@ $('#cloudBtn').onclick=async()=>{
   const c=await ask('☁️ المزامنة',{input:false,cancel:true,buttons:[['جهاز جديد: هات بياناتي','pull'],['ابدأ المزامنة من الجهاز ده','push']]});
   if(c==='push'){await setPin();if(getPin()&&SYNCPIN)await syncNow();return}
   if(c==='pull'){let err='';for(;;){const v=await ask('اكتب الرقم السري بتاعك',{cancel:true,err});if(v===null)return;
-    try{const r=await cloudGet(v);if(!r){err='مفيش بيانات بالرقم ده';continue}
-      const salt=Math.random().toString(36).slice(2);ls.set(PKEY,JSON.stringify({salt,hash:await hashPin(v,salt)}));syncLock();SYNCPIN=v;r.cloudAt=Date.now();adopt(r);cdMark('☁️ اتحمّلت البيانات','ok');return}
-    catch(e){err='حصل خطأ في الاتصال أو الرقم غلط'}}}};
+    try{const g=await gcall('get',v);if(g.error){err=g.error==='PIN_NEW'?'مفيش بيانات في السحابة لسه':gErr(g.error);continue}
+      if(!g.data){err='مفيش بيانات في السحابة لسه';continue}
+      const r=JSON.parse(g.data);const salt=Math.random().toString(36).slice(2);ls.set(PKEY,JSON.stringify({salt,hash:await hashPin(v,salt)}));syncLock();SYNCPIN=v;r.cloudAt=Date.now();adopt(r);cdMark('☁️ اتحمّلت البيانات','ok');return}
+    catch(e){err='حصل خطأ في الاتصال'}}}};
 syncLock();if(getPin())lock();
 </script>
 </body>
