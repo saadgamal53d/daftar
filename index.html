@@ -141,6 +141,7 @@ main.slide{animation:slidein .22s ease-out}
 .kp button{margin:0!important;padding:16px 0!important;font-size:24px;font-weight:800;border-radius:16px;background:#f1f5f4;border:0;color:var(--ink);cursor:pointer;font-family:inherit;-webkit-user-select:none;user-select:none}
 .kp button:active{background:#dfe9e6}.kp .bk{background:#fdeceb;color:var(--red)}.kp .okk{background:var(--green);color:#fff}
 #ovI{text-align:center;font-size:30px;letter-spacing:10px;min-height:54px;direction:ltr}
+.chk{flex-direction:row!important;align-items:center;gap:8px!important;grid-column:1/-1;font-size:14px;color:var(--ink)}.chk input{width:22px;height:22px;flex:none}
 @media(max-width:520px){.stat b{font-size:17px}header{padding-bottom:58px}}
 </style>
 </head>
@@ -252,6 +253,8 @@ if(!db.v13){const add=[{id:8000001,date:'2026-09-07',amount:200,desc:'سلف ل�
 save();
 if(db.work&&db.work.adj===undefined)db.work.adj=100;
 save();
+if(!db.v14){[{id:9100901,kind:'exp',amount:194.5,desc:'قسط تمارة ٤',cat:'',date:'2026-11-27',space:'exp'},{id:9100902,kind:'inc',amount:250,desc:'قبض',cat:'قبض',date:'2026-11-27',space:'exp',_wk:1}].forEach(a=>{const w=a._wk;delete a._wk;const ex=db.tx.find(t=>t.id===a.id||(t.date===a.date&&t.amount===a.amount&&t.kind===a.kind));if(ex){if(w&&!ex.wpId){syncWorkPay(ex,true);syncJe(ex)}return}db.tx.push(a);syncWorkPay(a,!!w);syncJe(a)});db.v14=1}
+save();
 {const fx={'2026-01-07':'2026-07-01','2026-12-06':'2026-06-12'};db.tx.forEach(t=>{if(t.id<9000000&&fx[t.date])t.date=fx[t.date]});save()}
 {const base=[...db.tx];ADD.forEach(a=>{if(!db.applied.includes(a.id)){db.applied.push(a.id);if(!base.some(t=>t.date===a.date&&t.amount===a.amount&&t.kind===a.kind))db.tx.push(a)}});save()}
 const $=s=>document.querySelector(s);
@@ -279,10 +282,14 @@ function showArchive(){const A=[...(db.archive||[])].sort((a,b)=>b.date.localeCo
   bkMode='copy';bkOpen('أرشيف الشيت القديم — انسخ النص',['التاريخ\tالنوع\tالمبلغ\tالبيان\tالتصنيف',...A.map(t=>[t.date,t.kind==='inc'?'دخل':'مصروف',t.amount,t.desc,t.cat].map(r).join('\t'))].join('\n'),false)}
 
 /* ---------- journal sync ---------- */
+function syncWorkPay(t,on){const W=db.work;const p=t.wpId?W.pays.find(x=>x.id===t.wpId):null;
+  if(on&&t.kind==='inc'){if(p)Object.assign(p,{date:t.date,amount:t.amount,desc:t.desc});else{t.wpId=Date.now()+7;W.pays.push({id:t.wpId,date:t.date,amount:t.amount,desc:t.desc,txId:t.id})}}
+  else if(p){W.pays=W.pays.filter(x=>x.id!==t.wpId);delete t.wpId}}
+
 function jeAcct(t){
   const d=(t.desc||'').trim();
   if(t.kind==='inc'){
-    let cr=d;
+    let cr=d;if(t.wpId)return {dr:'سعد',cr:'قبض من الشغل'};
     if(/بقشيش/.test(d))cr='بقشيش';else if(/موسم الحج/.test(d))cr='قبض موسم الحج';else if(/النصة|النصه/.test(d))cr='النصة';else if(/ابوي|بابا/.test(d))cr='ابويا';else if(/الحاج جمال/.test(d))cr='الحاج جمال';else if(/عمي جميل/.test(d))cr='عمي جميل';else if(/عمي (أ|ا)حمد/.test(d))cr='عمي أحمد';else if(/قبض/.test(d)&&/شغل/.test(d))cr='قبض من الشغل';
     return {dr:'سعد',cr};
   }
@@ -345,6 +352,7 @@ function renderTx(){
      <label>البيان<input name="desc" required placeholder="مثال: مواصلات" value="${e?esc(e.desc):''}"></label>
      <label>التصنيف<input name="cat" list="cats" placeholder="اختياري" value="${e?esc(e.cat||''):''}"></label>
      <label>التاريخ<input name="date" type="date" value="${e&&e.date?e.date:today()}" required></label>
+     <label class="chk" id="wkL" ${k==='inc'?'':'hidden'}><input type="checkbox" name="wk" id="wkC" ${(e&&e.wpId)||(!e&&k==='inc'&&0)?'checked':''}> <span>💼 ده قبض من الشغل <small>(بيتخصم من باقي فلوس الشغل ويظهر في القبض)</small></span></label>
      <button class="primary">${editId?'حفظ التعديل':'إضافة'}</button>
      ${editId||draft?'<button type="button" id="cancelE">إلغاء</button>':''}
    </form>
@@ -365,11 +373,13 @@ function renderTx(){
   $('#fCat').onchange=ev=>{fCat=ev.target.value;drawList()};
   $('#fKind').onchange=ev=>{fKind=ev.target.value;drawList()};
   $('#q').oninput=ev=>{q=ev.target.value;drawList()};
+  {const dI=document.querySelector('#fTx [name=desc]'),wc=$('#wkC');let touched=false;if(wc){wc.onchange=()=>{touched=true};if(dI)dI.oninput=()=>{if(!touched&&kind==='inc')wc.checked=/قبض|شغل|النصة|النصه/.test(dI.value)}}}
   const c=$('#cancelE'); if(c)c.onclick=()=>{editId=null;draft=null;renderTx()};
   $('#fTx').onsubmit=ev=>{ev.preventDefault();const f=new FormData(ev.target);
     const cat=(f.get('cat')||'').trim(); if(cat&&!db.cats.includes(cat))db.cats.push(cat);
     const rec={kind,space:'exp',amount:+f.get('amount'),desc:f.get('desc').trim(),cat,date:f.get('date')};
     let tt;if(editId){tt=db.tx.find(t=>t.id===editId);Object.assign(tt,rec)}else{tt={id:Date.now(),...rec};db.tx.push(tt)}
+    syncWorkPay(tt,!!(document.getElementById('wkC')&&document.getElementById('wkC').checked)&&rec.kind==='inc');
     syncJe(tt);
     if(curMonth)curMonth=rec.date.slice(0,7);
     editId=null;draft=null;save();renderTx()};
@@ -384,7 +394,7 @@ function drawList(){
   const ti=list.filter(t=>t.kind==='inc').reduce((a,t)=>a+t.amount,0),te=list.filter(t=>t.kind==='exp').reduce((a,t)=>a+t.amount,0),sum=ti-te;
   $('#txStats').innerHTML=`<div class="cards"><div class="stat"><small>دخل</small><b class="pos">${fmt(ti)}</b></div><div class="stat"><small>مصاريف</small><b class="neg">${fmt(te)}</b></div><div class="stat"><small>الصافي</small><b class="${sum<0?'neg':'pos'}">${fmt(sum)}</b></div></div>`;
   $('#txList').innerHTML=list.length?`<small style="color:var(--mute)">${list.length} حركة</small>`+list.map(t=>`<div class="item"><div class="ic ${t.kind}">${t.kind==='inc'?'+':'−'}</div><div class="mid"><b>${esc(t.desc)}</b><small>${t.cat?`<span class="chip">${esc(t.cat)}</span>`:''}${day(t.date)} · ${t.date}</small></div><div class="amt ${t.kind==='inc'?'pos':'neg'}">${t.kind==='inc'?'+':'−'}${fmt(t.amount)}</div><div class="acts"><button class="x ed" data-ed="${t.id}" title="تعديل">✎</button><button class="x ed" data-cp="${t.id}" title="نسخ">⧉</button><button class="x" data-del="${t.id}" title="مسح">×</button></div></div>`).join(''):'<div class="empty">مفيش حركات</div>';
-  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(await sure('مسح الحركة؟')){unlinkJe(+b.dataset.del);db.tx=db.tx.filter(t=>t.id!=b.dataset.del);save();renderTx()}});
+  document.querySelectorAll('[data-del]').forEach(b=>b.onclick=async()=>{if(await sure('مسح الحركة؟')){const t0=db.tx.find(t=>t.id==b.dataset.del);if(t0&&t0.wpId)db.work.pays=db.work.pays.filter(p=>p.id!==t0.wpId);unlinkJe(+b.dataset.del);db.tx=db.tx.filter(t=>t.id!=b.dataset.del);save();renderTx()}});
   document.querySelectorAll('[data-ed]').forEach(b=>b.onclick=()=>{editId=+b.dataset.ed;draft=null;renderTx();scrollTo({top:0,behavior:'smooth'})});
   document.querySelectorAll('[data-cp]').forEach(b=>b.onclick=()=>{const t=db.tx.find(x=>x.id==b.dataset.cp);editId=null;draft={...t,date:today()};renderTx();scrollTo({top:0,behavior:'smooth'})});
 }
@@ -571,7 +581,7 @@ function renderWork(){
    <div class="nr"><b class="neg">${ar(trs)}</b><span>دي فلوس المواصلات اللي صرفتها في كل يوم رحت فيه الشغل</span></div>
   `;
   const SEG=`<div class="card" style="padding:10px"><div class="seg" style="margin:0"><button type="button" data-wk="day" class="exp ${kind==='day'?'on':''}">يوم شغل</button><button type="button" data-wk="pay" class="inc ${kind==='pay'?'on':''}">قبض</button></div></div>`;
-  $('#work').innerHTML=kind==='pay'?SEG+`<div class="card notes">${NOTES}</div>`:SEG+`
+  $('#work').innerHTML=kind==='pay'?SEG+`<div class="card notes">${NOTES}</div><div class="card"><h2>💵 القبض المسجل</h2>${pays.length?[...pays].reverse().map(p=>`<div class="item"><div class="mid"><b>${esc(p.desc)}</b><small>${day(p.date)} · ${p.date}${p.txId?' · <span class="chip">من الحركات</span>':''}</small></div><div class="amt pos">+${ar(p.amount)}</div></div>`).join(''):'<div class="empty">لسه مفيش قبض</div>'}</div>`:SEG+`
   <div class="cards w5"><div class="stat"><small>إجمالي كل أيام الشغل</small><b>${ar(total)}</b></div><div class="stat"><small>اللي قبضته</small><b class="pos">${ar(paid)}</b></div><div class="stat"><small>الباقي من فلوس الشغل</small><b class="neg">${ar(rest)}</b></div><div class="stat"><small>مواصلات الشغل</small><b class="neg">${ar(trs)}</b></div></div>${adj?`<div style="color:var(--mute);font-size:13px;margin:-6px 4px 12px">الباقي = الإجمالي − اللي قبضته + تسوية ${ar(adj)} (الشهور القديمة مسددة)</div>`:''}
   <div class="card"><h2>${e?'✏️ تعديل':'💼 تسجيل'}</h2>
    <form id="fW">
